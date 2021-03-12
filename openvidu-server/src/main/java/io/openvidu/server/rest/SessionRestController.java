@@ -377,7 +377,7 @@ public class SessionRestController {
 
 		try {
 			Recording startedRecording = this.recordingManager.startRecording(session, recordingProperties);
-			return new ResponseEntity<>(startedRecording.toJson().toString(), RestUtils.getResponseHeaders(),
+			return new ResponseEntity<>(startedRecording.toJson(false).toString(), RestUtils.getResponseHeaders(),
 					HttpStatus.OK);
 		} catch (OpenViduException e) {
 			HttpStatus status = e.getCodeValue() == Code.MEDIA_NODE_STATUS_WRONG.getValue()
@@ -431,7 +431,7 @@ public class SessionRestController {
 					session.getParticipantByPublicId(ProtocolElements.RECORDER_PARTICIPANT_PUBLICID), null, null, null);
 		}
 
-		return new ResponseEntity<>(stoppedRecording.toJson().toString(), RestUtils.getResponseHeaders(),
+		return new ResponseEntity<>(stoppedRecording.toJson(false).toString(), RestUtils.getResponseHeaders(),
 				HttpStatus.OK);
 	}
 
@@ -451,7 +451,8 @@ public class SessionRestController {
 					&& recordingManager.getStartingRecording(recording.getId()) != null) {
 				recording.setStatus(io.openvidu.java.client.Recording.Status.starting);
 			}
-			return new ResponseEntity<>(recording.toJson().toString(), RestUtils.getResponseHeaders(), HttpStatus.OK);
+			return new ResponseEntity<>(recording.toJson(false).toString(), RestUtils.getResponseHeaders(),
+					HttpStatus.OK);
 		} catch (Exception e) {
 			return new ResponseEntity<>(HttpStatus.NOT_FOUND);
 		}
@@ -475,7 +476,7 @@ public class SessionRestController {
 					&& recordingManager.getStartingRecording(rec.getId()) != null) {
 				rec.setStatus(io.openvidu.java.client.Recording.Status.starting);
 			}
-			jsonArray.add(rec.toJson());
+			jsonArray.add(rec.toJson(false));
 		});
 		json.addProperty("count", recordings.size());
 		json.add("items", jsonArray);
@@ -638,7 +639,7 @@ public class SessionRestController {
 		}
 
 		try {
-			sessionManager.sendMessage(completeMessage.toString(), sessionId);
+			sessionManager.sendMessage(completeMessage.toString(), session);
 		} catch (OpenViduException e) {
 			return this.generateErrorResponse("\"to\" array has no valid connection identifiers", "/signal",
 					HttpStatus.NOT_ACCEPTABLE);
@@ -685,8 +686,8 @@ public class SessionRestController {
 		String typeOfVideo = ConnectionType.IPCAM.name();
 		Integer frameRate = null;
 		String videoDimensions = null;
-		KurentoMediaOptions mediaOptions = new KurentoMediaOptions(true, null, hasAudio, hasVideo, audioActive,
-				videoActive, typeOfVideo, frameRate, videoDimensions, null, false, connectionProperties.getRtspUri(),
+		KurentoMediaOptions mediaOptions = new KurentoMediaOptions(null, hasAudio, hasVideo, audioActive, videoActive,
+				typeOfVideo, frameRate, videoDimensions, null, false, connectionProperties.getRtspUri(),
 				connectionProperties.adaptativeBitrate(), connectionProperties.onlyPlayWithSubscribers(),
 				connectionProperties.getNetworkCache());
 
@@ -1036,6 +1037,7 @@ public class SessionRestController {
 		responseJson.addProperty("error", status.getReasonPhrase());
 		responseJson.addProperty("message", errorMessage);
 		responseJson.addProperty("path", RequestMappings.API + path);
+		log.warn("REST API error response to path {} ({}): {}", path, status.value(), errorMessage);
 		return new ResponseEntity<>(responseJson.toString(), RestUtils.getResponseHeaders(), status);
 	}
 

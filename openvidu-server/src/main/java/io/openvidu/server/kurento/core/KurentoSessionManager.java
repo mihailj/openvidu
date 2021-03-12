@@ -57,6 +57,11 @@ import io.openvidu.java.client.RecordingMode;
 import io.openvidu.java.client.RecordingProperties;
 import io.openvidu.java.client.SessionProperties;
 import io.openvidu.java.client.VideoCodec;
+import io.openvidu.server.cdr.CallDetailRecord;
+import io.openvidu.server.cdr.WebrtcDebugEvent;
+import io.openvidu.server.cdr.WebrtcDebugEvent.WebrtcDebugEventIssuer;
+import io.openvidu.server.cdr.WebrtcDebugEvent.WebrtcDebugEventOperation;
+import io.openvidu.server.cdr.WebrtcDebugEvent.WebrtcDebugEventType;
 import io.openvidu.server.core.EndReason;
 import io.openvidu.server.core.FinalUser;
 import io.openvidu.server.core.IdentifierPrefixes;
@@ -67,7 +72,6 @@ import io.openvidu.server.core.SessionManager;
 import io.openvidu.server.core.Token;
 import io.openvidu.server.kurento.endpoint.KurentoFilter;
 import io.openvidu.server.kurento.endpoint.PublisherEndpoint;
-import io.openvidu.server.kurento.endpoint.SdpType;
 import io.openvidu.server.kurento.kms.Kms;
 import io.openvidu.server.kurento.kms.KmsManager;
 import io.openvidu.server.rpc.RpcHandler;
@@ -90,6 +94,9 @@ public class KurentoSessionManager extends SessionManager {
 
 	@Autowired
 	private SDPMunging sdpMunging;
+
+	@Autowired
+	private CallDetailRecord CDR;
 
 	@Override
 	/* Protected by Session.closingLock.readLock */
@@ -361,25 +368,37 @@ public class KurentoSessionManager extends SessionManager {
 		Set<Participant> participants = null;
 		String sdpAnswer = null;
 
+		if (participant.isStreaming()) {
+			log.warn("PARTICIPANT {}: Request to publish media in session {} but user is already publishing",
+					participant.getParticipantPublicId(), participant.getSessionId());
+			throw new OpenViduException(Code.USER_ALREADY_STREAMING_ERROR_CODE,
+					"User " + participant.getParticipantPublicId() + " is already publishing in session "
+							+ participant.getSessionId());
+		}
+
 		KurentoMediaOptions kurentoOptions = (KurentoMediaOptions) mediaOptions;
 		KurentoParticipant kParticipant = (KurentoParticipant) participant;
 		KurentoSession kSession = kParticipant.getSession();
-		SdpType sdpType = kurentoOptions.isOffer ? SdpType.OFFER : SdpType.ANSWER;
 		boolean isTranscodingAllowed = kSession.getSessionProperties().isTranscodingAllowed();
 		VideoCodec forcedVideoCodec = kSession.getSessionProperties().forcedVideoCodec();
 
+		final String streamId = kParticipant.generateStreamId(kurentoOptions);
+
+		CDR.log(new WebrtcDebugEvent(participant, streamId, WebrtcDebugEventIssuer.client,
+				WebrtcDebugEventOperation.publish, WebrtcDebugEventType.sdpOffer, kurentoOptions.sdpOffer));
+
 		// Modify sdp if forced codec is defined
 		if (forcedVideoCodec != VideoCodec.NONE && !participant.isIpcam()) {
-			kurentoOptions.sdpOffer = sdpMunging.forceCodec(participant, kurentoOptions.sdpOffer,
-					kurentoOptions.isOffer, kSession, true, false, isTranscodingAllowed, forcedVideoCodec);
+			kurentoOptions.sdpOffer = sdpMunging.forceCodec(participant, kurentoOptions.sdpOffer, kSession, true, false,
+					isTranscodingAllowed, forcedVideoCodec);
+			CDR.log(new WebrtcDebugEvent(participant, streamId, WebrtcDebugEventIssuer.client,
+					WebrtcDebugEventOperation.publish, WebrtcDebugEventType.sdpOfferMunged, kurentoOptions.sdpOffer));
 		}
-		log.debug(
-				"Request [PUBLISH_MEDIA] isOffer={} sdp={} "
-						+ "loopbackAltSrc={} lpbkConnType={} doLoopback={} rtspUri={} ({})",
-				kurentoOptions.isOffer, kurentoOptions.sdpOffer, kurentoOptions.doLoopback, kurentoOptions.rtspUri,
+		log.debug("Request [PUBLISH_MEDIA] sdpOffer={} loopbackAltSrc={} lpbkConnType={} doLoopback={} rtspUri={} ({})",
+				kurentoOptions.sdpOffer, kurentoOptions.doLoopback, kurentoOptions.rtspUri,
 				participant.getParticipantPublicId());
 
-		kParticipant.createPublishingEndpoint(mediaOptions, null);
+		kParticipant.createPublishingEndpoint(mediaOptions, streamId);
 
 		/*
 		 * for (MediaElement elem : kurentoOptions.mediaElements) {
@@ -403,7 +422,7 @@ public class KurentoSessionManager extends SessionManager {
 			}
 		}
 
-		sdpAnswer = kParticipant.publishToRoom(sdpType, kurentoOptions.sdpOffer, kurentoOptions.doLoopback, false);
+		sdpAnswer = kParticipant.publishToRoom(kurentoOptions.sdpOffer, kurentoOptions.doLoopback, false);
 
 		if (sdpAnswer == null) {
 			OpenViduException e = new OpenViduException(Code.MEDIA_SDP_ERROR_CODE,
@@ -412,6 +431,9 @@ public class KurentoSessionManager extends SessionManager {
 			sessionEventsHandler.onPublishMedia(participant, null, kParticipant.getPublisher().createdAt(),
 					kSession.getSessionId(), mediaOptions, sdpAnswer, participants, transactionId, e);
 		}
+
+		CDR.log(new WebrtcDebugEvent(participant, streamId, WebrtcDebugEventIssuer.server,
+				WebrtcDebugEventOperation.publish, WebrtcDebugEventType.sdpAnswer, sdpAnswer));
 
 		if (this.openviduConfig.isRecordingModuleEnabled()
 				&& MediaMode.ROUTED.equals(kSession.getSessionProperties().mediaMode())
@@ -518,6 +540,7 @@ public class KurentoSessionManager extends SessionManager {
 	public void subscribe(Participant participant, String senderName, String sdpOffer, Integer transactionId) {
 		String sdpAnswer = null;
 		Session session = null;
+
 		try {
 			log.debug("Request [SUBSCRIBE] remoteParticipant={} sdpOffer={} ({})", senderName, sdpOffer,
 					participant.getParticipantPublicId());
@@ -525,14 +548,6 @@ public class KurentoSessionManager extends SessionManager {
 			KurentoParticipant kParticipant = (KurentoParticipant) participant;
 			session = ((KurentoParticipant) participant).getSession();
 			Participant senderParticipant = session.getParticipantByPublicId(senderName);
-			boolean isTranscodingAllowed = session.getSessionProperties().isTranscodingAllowed();
-			VideoCodec forcedVideoCodec = session.getSessionProperties().forcedVideoCodec();
-
-			// Modify sdp if forced codec is defined
-			if (forcedVideoCodec != VideoCodec.NONE && !participant.isIpcam()) {
-				sdpOffer = sdpMunging.forceCodec(participant, sdpOffer, true, session, false, false,
-						isTranscodingAllowed, forcedVideoCodec);
-			}
 
 			if (senderParticipant == null) {
 				log.warn(
@@ -551,12 +566,33 @@ public class KurentoSessionManager extends SessionManager {
 						"User '" + senderName + " not streaming media in session '" + session.getSessionId() + "'");
 			}
 
+			String subscriberEndpointName = kParticipant.calculateSubscriberEndpointName(senderParticipant);
+
+			CDR.log(new WebrtcDebugEvent(participant, subscriberEndpointName, WebrtcDebugEventIssuer.client,
+					WebrtcDebugEventOperation.subscribe, WebrtcDebugEventType.sdpOffer, sdpOffer));
+
+			boolean isTranscodingAllowed = session.getSessionProperties().isTranscodingAllowed();
+			VideoCodec forcedVideoCodec = session.getSessionProperties().forcedVideoCodec();
+
+			// Modify sdp if forced codec is defined
+			if (forcedVideoCodec != VideoCodec.NONE && !participant.isIpcam()) {
+				sdpOffer = sdpMunging.forceCodec(participant, sdpOffer, session, false, false, isTranscodingAllowed,
+						forcedVideoCodec);
+
+				CDR.log(new WebrtcDebugEvent(participant, subscriberEndpointName, WebrtcDebugEventIssuer.client,
+						WebrtcDebugEventOperation.subscribe, WebrtcDebugEventType.sdpOfferMunged, sdpOffer));
+			}
+
 			sdpAnswer = kParticipant.receiveMediaFrom(senderParticipant, sdpOffer, false);
 			if (sdpAnswer == null) {
 				throw new OpenViduException(Code.MEDIA_SDP_ERROR_CODE,
 						"Unable to generate SDP answer when subscribing '" + participant.getParticipantPublicId()
 								+ "' to '" + senderName + "'");
 			}
+
+			CDR.log(new WebrtcDebugEvent(participant, subscriberEndpointName, WebrtcDebugEventIssuer.server,
+					WebrtcDebugEventOperation.subscribe, WebrtcDebugEventType.sdpAnswer, sdpAnswer));
+
 		} catch (OpenViduException e) {
 			log.error("PARTICIPANT {}: Error subscribing to {}", participant.getParticipantPublicId(), senderName, e);
 			sessionEventsHandler.onSubscribe(participant, session, null, transactionId, e);
@@ -748,8 +784,8 @@ public class KurentoSessionManager extends SessionManager {
 
 		boolean doLoopback = RpcHandler.getBooleanParam(request, ProtocolElements.PUBLISHVIDEO_DOLOOPBACK_PARAM);
 
-		return new KurentoMediaOptions(true, sdpOffer, hasAudio, hasVideo, audioActive, videoActive, typeOfVideo,
-				frameRate, videoDimensions, kurentoFilter, doLoopback);
+		return new KurentoMediaOptions(sdpOffer, hasAudio, hasVideo, audioActive, videoActive, typeOfVideo, frameRate,
+				videoDimensions, kurentoFilter, doLoopback);
 	}
 
 	@Override
@@ -1049,7 +1085,7 @@ public class KurentoSessionManager extends SessionManager {
 		this.newTokenForInsecureUser(session, token, connectionProperties);
 		final Token tokenObj = session.consumeToken(token);
 
-		Participant ipcamParticipant = this.newIpcamParticipant(sessionId, rtspConnectionId, tokenObj, location,
+		Participant ipcamParticipant = this.newIpcamParticipant(session, rtspConnectionId, tokenObj, location,
 				mediaOptions.getTypeOfVideo());
 
 		// Store a "fake" final user for the IpCam connection
@@ -1077,13 +1113,24 @@ public class KurentoSessionManager extends SessionManager {
 		boolean isTranscodingAllowed = kSession.getSessionProperties().isTranscodingAllowed();
 		VideoCodec forcedVideoCodec = kSession.getSessionProperties().forcedVideoCodec();
 
+		boolean sdpOfferHasBeenMunged = false;
+		String originalSdpOffer = sdpOffer;
+
 		// Modify sdp if forced codec is defined
 		if (forcedVideoCodec != VideoCodec.NONE && !participant.isIpcam()) {
-			sdpOffer = sdpMunging.forceCodec(participant, sdpOffer, true, kSession, isPublisher, true,
-					isTranscodingAllowed, forcedVideoCodec);
+			sdpOfferHasBeenMunged = true;
+			sdpOffer = sdpMunging.forceCodec(participant, sdpOffer, kSession, isPublisher, true, isTranscodingAllowed,
+					forcedVideoCodec);
 		}
 
 		if (isPublisher) {
+
+			CDR.log(new WebrtcDebugEvent(participant, streamId, WebrtcDebugEventIssuer.client,
+					WebrtcDebugEventOperation.reconnectPublisher, WebrtcDebugEventType.sdpOffer, originalSdpOffer));
+			if (sdpOfferHasBeenMunged) {
+				CDR.log(new WebrtcDebugEvent(participant, streamId, WebrtcDebugEventIssuer.client,
+						WebrtcDebugEventOperation.reconnectPublisher, WebrtcDebugEventType.sdpOfferMunged, sdpOffer));
+			}
 
 			// Reconnect publisher
 			final KurentoMediaOptions kurentoOptions = (KurentoMediaOptions) kParticipant.getPublisher()
@@ -1100,10 +1147,13 @@ public class KurentoSessionManager extends SessionManager {
 			// 3) Create a new PublisherEndpoint connecting it to the previous PassThrough
 			kParticipant.resetPublisherEndpoint(kurentoOptions, passThru);
 			kParticipant.createPublishingEndpoint(kurentoOptions, streamId);
-			SdpType sdpType = kurentoOptions.isOffer ? SdpType.OFFER : SdpType.ANSWER;
-			String sdpAnswer = kParticipant.publishToRoom(sdpType, sdpOffer, kurentoOptions.doLoopback, true);
+			String sdpAnswer = kParticipant.publishToRoom(sdpOffer, kurentoOptions.doLoopback, true);
 			log.debug("SDP Answer for publishing reconnection PARTICIPANT {}: {}", participant.getParticipantPublicId(),
 					sdpAnswer);
+
+			CDR.log(new WebrtcDebugEvent(participant, streamId, WebrtcDebugEventIssuer.server,
+					WebrtcDebugEventOperation.reconnectPublisher, WebrtcDebugEventType.sdpAnswer, sdpAnswer));
+
 			sessionEventsHandler.onPublishMedia(participant, participant.getPublisherStreamId(),
 					kParticipant.getPublisher().createdAt(), kSession.getSessionId(), kurentoOptions, sdpAnswer,
 					new HashSet<Participant>(), transactionId, null);
@@ -1113,7 +1163,19 @@ public class KurentoSessionManager extends SessionManager {
 			// Reconnect subscriber
 			String senderPrivateId = kSession.getParticipantPrivateIdFromStreamId(streamId);
 			if (senderPrivateId != null) {
+
 				KurentoParticipant sender = (KurentoParticipant) kSession.getParticipantByPrivateId(senderPrivateId);
+				String subscriberEndpointName = kParticipant.calculateSubscriberEndpointName(sender);
+
+				CDR.log(new WebrtcDebugEvent(participant, subscriberEndpointName, WebrtcDebugEventIssuer.client,
+						WebrtcDebugEventOperation.reconnectSubscriber, WebrtcDebugEventType.sdpOffer,
+						originalSdpOffer));
+				if (sdpOfferHasBeenMunged) {
+					CDR.log(new WebrtcDebugEvent(participant, subscriberEndpointName, WebrtcDebugEventIssuer.client,
+							WebrtcDebugEventOperation.reconnectSubscriber, WebrtcDebugEventType.sdpOfferMunged,
+							sdpOffer));
+				}
+
 				kParticipant.cancelReceivingMedia(sender, null, true);
 				String sdpAnswer = kParticipant.receiveMediaFrom(sender, sdpOffer, true);
 				if (sdpAnswer == null) {
@@ -1123,6 +1185,10 @@ public class KurentoSessionManager extends SessionManager {
 
 				log.debug("SDP Answer for subscribing reconnection PARTICIPANT {}: {}",
 						participant.getParticipantPublicId(), sdpAnswer);
+
+				CDR.log(new WebrtcDebugEvent(participant, subscriberEndpointName, WebrtcDebugEventIssuer.server,
+						WebrtcDebugEventOperation.reconnectSubscriber, WebrtcDebugEventType.sdpAnswer, sdpAnswer));
+
 				sessionEventsHandler.onSubscribe(participant, kSession, sdpAnswer, transactionId, null);
 			} else {
 				throw new OpenViduException(Code.USER_NOT_STREAMING_ERROR_CODE,
@@ -1175,13 +1241,14 @@ public class KurentoSessionManager extends SessionManager {
 		PublisherEndpoint pub = kParticipant.getPublisher();
 		if (!pub.isListenerAddedToFilterEvent(eventType)) {
 			final String sessionId = kParticipant.getSessionId();
+			final String uniqueSessionId = kParticipant.getUniqueSessionId();
 			final String connectionId = kParticipant.getParticipantPublicId();
 			final String streamId = kParticipant.getPublisherStreamId();
 			final String filterType = kParticipant.getPublisherMediaOptions().getFilter().getType();
 			try {
 				ListenerSubscription listener = pub.getFilter().addEventListener(eventType, event -> {
-					sessionEventsHandler.onFilterEventDispatched(sessionId, connectionId, streamId, filterType, event,
-							kParticipant.getSession().getParticipants(),
+					sessionEventsHandler.onFilterEventDispatched(sessionId, uniqueSessionId, connectionId, streamId,
+							filterType, event, kParticipant.getSession().getParticipants(),
 							kParticipant.getPublisher().getPartipantsListentingToFilterEvent(eventType));
 				});
 				pub.storeListener(eventType, listener);

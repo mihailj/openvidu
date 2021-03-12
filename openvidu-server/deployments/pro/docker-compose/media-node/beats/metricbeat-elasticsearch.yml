@@ -1,18 +1,4 @@
 metricbeat.modules:
-  - module: docker
-    metricsets:
-      - "container"
-      - "cpu"
-      - "diskio"
-      - "event"
-      - "healthcheck"
-      - "info"
-      - "image"
-      - "memory"
-      - "network"
-    hosts: ["unix:///var/run/docker.sock"]
-    period: ${OPENVIDU_PRO_CLUSTER_LOAD_INTERVAL}0s
-    enabled: true
   - module: system
     metricsets:
       - cpu
@@ -40,9 +26,13 @@ metricbeat.modules:
                 - regexp:
                       system.filesystem.mount_point: '^/hostfs/(sys|cgroup|proc|dev|etc|host)($|/)'
     enabled: true
-    period: ${OPENVIDU_PRO_CLUSTER_LOAD_INTERVAL}0s
+    period: ${OPENVIDU_PRO_STATS_MONITORING_INTERVAL}s
     cpu.metrics: [normalized_percentages]
-fields: {ip: "${MEDIA_NODE_IP}", cluster-id: "${CLUSTER_ID}", cluster-role: media-node}
+fields: 
+  ip: "${MEDIA_NODE_IP}"
+  cluster_id: "${CLUSTER_ID}"
+  node_id: ${NODE_ID}
+  node_role: medianode
 pipeline:
   queue.mem.events: 0
 setup.ilm.enabled: false

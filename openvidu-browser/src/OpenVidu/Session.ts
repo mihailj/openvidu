@@ -190,7 +190,7 @@ export class Session extends EventDispatcher {
      * @returns A Promise to which you must subscribe that is resolved if the the connection to the Session was successful and rejected with an Error object if not
      *
      */
-    connect(token: string, metadata?: any): Promise<any> {
+    connect(token: string, metadata?: any): Promise<void> {
         return new Promise((resolve, reject) => {
 
             this.processToken(token);
@@ -383,7 +383,7 @@ export class Session extends EventDispatcher {
      *
      * @returns A Promise (to which you can optionally subscribe to) that is resolved only after the publisher was successfully published and rejected with an Error object if not
      */
-    publish(publisher: Publisher): Promise<any> {
+    publish(publisher: Publisher): Promise<void> {
         return new Promise((resolve, reject) => {
             publisher.session = this;
             publisher.stream.session = this;
@@ -490,7 +490,7 @@ export class Session extends EventDispatcher {
      *
      * @returns A Promise (to which you can optionally subscribe to) that is resolved only after the participant has been successfully evicted from the session and rejected with an Error object if not
      */
-    forceDisconnect(connection: Connection): Promise<any> {
+    forceDisconnect(connection: Connection): Promise<void> {
         return new Promise((resolve, reject) => {
             logger.info('Forcing disconnect for connection ' + connection.connectionId);
             this.openvidu.sendRequest(
@@ -529,7 +529,7 @@ export class Session extends EventDispatcher {
      *
      * @returns A Promise (to which you can optionally subscribe to) that is resolved only after the remote Stream has been successfully unpublished from the session and rejected with an Error object if not
      */
-    forceUnpublish(stream: Stream): Promise<any> {
+    forceUnpublish(stream: Stream): Promise<void> {
         return new Promise((resolve, reject) => {
             logger.info('Forcing unpublish for stream ' + stream.streamId);
             this.openvidu.sendRequest(
@@ -565,7 +565,7 @@ export class Session extends EventDispatcher {
      * mean that openvidu-server could resend the message to all the listed receivers._
      */
     /* tslint:disable:no-string-literal */
-    signal(signal: SignalOptions): Promise<any> {
+    signal(signal: SignalOptions): Promise<void> {
         return new Promise((resolve, reject) => {
 
             const signalMessage = {};
@@ -616,22 +616,20 @@ export class Session extends EventDispatcher {
         if (type === 'publisherStartSpeaking') {
             this.startSpeakingEventsEnabled = true;
             // If there are already available remote streams, enable hark 'speaking' event in all of them
-            for (const connectionId in this.remoteConnections) {
-                const str = this.remoteConnections.get(connectionId)?.stream;
-                if (!!str && str.hasAudio) {
-                    str.enableStartSpeakingEvent();
+            this.remoteConnections.forEach(remoteConnection => {
+                if (!!remoteConnection.stream && remoteConnection.stream.hasAudio) {
+                    remoteConnection.stream.enableStartSpeakingEvent();
                 }
-            }
+            });
         }
         if (type === 'publisherStopSpeaking') {
             this.stopSpeakingEventsEnabled = true;
             // If there are already available remote streams, enable hark 'stopped_speaking' event in all of them
-            for (const connectionId in this.remoteConnections) {
-                const str = this.remoteConnections.get(connectionId)?.stream;
-                if (!!str && str.hasAudio) {
-                    str.enableStopSpeakingEvent();
+            this.remoteConnections.forEach(remoteConnection => {
+                if (!!remoteConnection.stream && remoteConnection.stream.hasAudio) {
+                    remoteConnection.stream.enableStopSpeakingEvent();
                 }
-            }
+            });
         }
 
         return this;
@@ -648,22 +646,20 @@ export class Session extends EventDispatcher {
         if (type === 'publisherStartSpeaking') {
             this.startSpeakingEventsEnabledOnce = true;
             // If there are already available remote streams, enable hark 'speaking' event in all of them once
-            for (const connectionId in this.remoteConnections) {
-                const str = this.remoteConnections.get(connectionId)?.stream;
-                if (!!str && str.hasAudio) {
-                    str.enableOnceStartSpeakingEvent();
+            this.remoteConnections.forEach(remoteConnection => {
+                if (!!remoteConnection.stream && remoteConnection.stream.hasAudio) {
+                    remoteConnection.stream.enableOnceStartSpeakingEvent();
                 }
-            }
+            });
         }
         if (type === 'publisherStopSpeaking') {
             this.stopSpeakingEventsEnabledOnce = true;
             // If there are already available remote streams, enable hark 'stopped_speaking' event in all of them once
-            for (const connectionId in this.remoteConnections) {
-                const str = this.remoteConnections.get(connectionId)?.stream;
-                if (!!str && str.hasAudio) {
-                    str.enableOnceStopSpeakingEvent();
+            this.remoteConnections.forEach(remoteConnection => {
+                if (!!remoteConnection.stream && remoteConnection.stream.hasAudio) {
+                    remoteConnection.stream.enableOnceStopSpeakingEvent();
                 }
-            }
+            });
         }
 
         return this;
@@ -682,12 +678,11 @@ export class Session extends EventDispatcher {
             if (remainingStartSpeakingListeners === 0) {
                 this.startSpeakingEventsEnabled = false;
                 // If there are already available remote streams, disable hark in all of them
-                for (const connectionId in this.remoteConnections) {
-                    const str = this.remoteConnections.get(connectionId)?.stream;
-                    if (!!str) {
-                        str.disableStartSpeakingEvent(false);
+                this.remoteConnections.forEach(remoteConnection => {
+                    if (!!remoteConnection.stream) {
+                        remoteConnection.stream.disableStartSpeakingEvent(false);
                     }
-                }
+                });
             }
         }
         if (type === 'publisherStopSpeaking') {
@@ -695,12 +690,11 @@ export class Session extends EventDispatcher {
             if (remainingStopSpeakingListeners === 0) {
                 this.stopSpeakingEventsEnabled = false;
                 // If there are already available remote streams, disable hark in all of them
-                for (const connectionId in this.remoteConnections) {
-                    const str = this.remoteConnections.get(connectionId)?.stream;
-                    if (!!str) {
-                        str.disableStopSpeakingEvent(false);
+                this.remoteConnections.forEach(remoteConnection => {
+                    if (!!remoteConnection.stream) {
+                        remoteConnection.stream.disableStopSpeakingEvent(false);
                     }
-                }
+                });
             }
         }
         return this;
@@ -731,7 +725,7 @@ export class Session extends EventDispatcher {
      */
     onParticipantLeft(msg): void {
 
-        if(this.remoteConnections.size > 0) {
+        if (this.remoteConnections.size > 0) {
             this.getRemoteConnection(msg.connectionId).then(connection => {
                 if (!!connection.stream) {
                     const stream = connection.stream;
@@ -750,9 +744,9 @@ export class Session extends EventDispatcher {
                 this.remoteConnections.delete(connection.connectionId);
                 this.ee.emitEvent('connectionDestroyed', [new ConnectionEvent(false, this, 'connectionDestroyed', connection, msg.reason)]);
             })
-            .catch(openViduError => {
-                logger.error(openViduError);
-            });
+                .catch(openViduError => {
+                    logger.error(openViduError);
+                });
         }
     }
 
@@ -852,7 +846,7 @@ export class Session extends EventDispatcher {
 
         if (!!msg.from) {
             // Signal sent by other client
-            this.getConnection(msg.from, "Connection '" + msg.from + "' unknow when 'onNewMessage'. Existing remote connections: "
+            this.getConnection(msg.from, "Connection '" + msg.from + "' unknown when 'onNewMessage'. Existing remote connections: "
                 + JSON.stringify(this.remoteConnections.keys()) + '. Existing local connection: ' + this.connection.connectionId)
 
                 .then(connection => {
@@ -1100,13 +1094,13 @@ export class Session extends EventDispatcher {
             someReconnection = true;
         }
         // Re-establish Subscriber streams
-        for (let remoteConnection of Object.values(this.remoteConnections)) {
+        this.remoteConnections.forEach(remoteConnection => {
             if (!!remoteConnection.stream && remoteConnection.stream.streamIceConnectionStateBroken()) {
                 logger.warn('Re-establishing Subscriber ' + remoteConnection.stream.streamId);
                 remoteConnection.stream.initWebRtcPeerReceive(true);
                 someReconnection = true;
             }
-        }
+        });
         if (!someReconnection) {
             logger.info('There were no media streams in need of a reconnection');
         }
@@ -1176,24 +1170,27 @@ export class Session extends EventDispatcher {
             platform.isSamsungBrowser() || platform.isIonicAndroid() || (platform.isIPhoneOrIPad() && platform.isIOSWithSafari())
         ) {
             const obtainAndSendVideo = async () => {
-                const statsMap = await streamManager.stream.getRTCPeerConnection().getStats();
-                const arr: any[] = [];
-                statsMap.forEach(stats => {
-                    if (("frameWidth" in stats) && ("frameHeight" in stats) && (arr.length === 0)) {
-                        arr.push(stats);
-                    }
-                });
-                if (arr.length > 0) {
-                    this.openvidu.sendRequest('videoData', {
-                        height: arr[0].frameHeight,
-                        width: arr[0].frameWidth,
-                        videoActive: streamManager.stream.videoActive != null ? streamManager.stream.videoActive : false,
-                        audioActive: streamManager.stream.audioActive != null ? streamManager.stream.audioActive : false
-                    }, (error, response) => {
-                        if (error) {
-                            logger.error("Error sending 'videoData' event", error);
+                const pc = streamManager.stream.getRTCPeerConnection();
+                if (pc.connectionState === 'connected') {
+                    const statsMap = await pc.getStats();
+                    const arr: any[] = [];
+                    statsMap.forEach(stats => {
+                        if (("frameWidth" in stats) && ("frameHeight" in stats) && (arr.length === 0)) {
+                            arr.push(stats);
                         }
                     });
+                    if (arr.length > 0) {
+                        this.openvidu.sendRequest('videoData', {
+                            height: arr[0].frameHeight,
+                            width: arr[0].frameWidth,
+                            videoActive: streamManager.stream.videoActive != null ? streamManager.stream.videoActive : false,
+                            audioActive: streamManager.stream.audioActive != null ? streamManager.stream.audioActive : false
+                        }, (error, response) => {
+                            if (error) {
+                                logger.error("Error sending 'videoData' event", error);
+                            }
+                        });
+                    }
                 }
             }
             if (doInterval) {
@@ -1202,7 +1199,7 @@ export class Session extends EventDispatcher {
                     if (loops < maxLoops) {
                         loops++;
                         obtainAndSendVideo();
-                    }else {
+                    } else {
                         clearInterval(this.videoDataInterval);
                     }
                 }, intervalSeconds * 1000);
@@ -1228,7 +1225,7 @@ export class Session extends EventDispatcher {
 
     /* Private methods */
 
-    private connectAux(token: string): Promise<any> {
+    private connectAux(token: string): Promise<void> {
         return new Promise((resolve, reject) => {
             this.openvidu.startWs((error) => {
                 if (!!error) {
@@ -1334,7 +1331,7 @@ export class Session extends EventDispatcher {
                 resolve(connection);
             } else {
                 // Remote connection not found. Reject with OpenViduError
-               const errorMessage = 'Remote connection ' + connectionId + " unknown when 'onParticipantLeft'. " +
+                const errorMessage = 'Remote connection ' + connectionId + " unknown when 'onParticipantLeft'. " +
                     'Existing remote connections: ' + JSON.stringify(this.remoteConnections.keys());
 
                 reject(new OpenViduError(OpenViduErrorName.GENERIC_ERROR, errorMessage));

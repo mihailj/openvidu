@@ -55,7 +55,6 @@ import io.openvidu.server.core.MediaOptions;
 import io.openvidu.server.core.Participant;
 import io.openvidu.server.kurento.endpoint.MediaEndpoint;
 import io.openvidu.server.kurento.endpoint.PublisherEndpoint;
-import io.openvidu.server.kurento.endpoint.SdpType;
 import io.openvidu.server.kurento.endpoint.SubscriberEndpoint;
 import io.openvidu.server.recording.service.RecordingManager;
 
@@ -79,9 +78,9 @@ public class KurentoParticipant extends Participant {
 			KurentoParticipantEndpointConfig endpointConfig, OpenviduConfig openviduConfig,
 			RecordingManager recordingManager) {
 		super(participant.getFinalUserId(), participant.getParticipantPrivateId(), participant.getParticipantPublicId(),
-				kurentoSession.getSessionId(), participant.getToken(), participant.getClientMetadata(),
-				participant.getLocation(), participant.getPlatform(), participant.getEndpointType(),
-				participant.getActiveAt());
+				kurentoSession.getSessionId(), kurentoSession.getUniqueSessionId(), participant.getToken(),
+				participant.getClientMetadata(), participant.getLocation(), participant.getPlatform(),
+				participant.getEndpointType(), participant.getActiveAt());
 		this.endpointConfig = endpointConfig;
 		this.openviduConfig = openviduConfig;
 		this.recordingManager = recordingManager;
@@ -99,12 +98,6 @@ public class KurentoParticipant extends Participant {
 	}
 
 	public void createPublishingEndpoint(MediaOptions mediaOptions, String streamId) {
-		String type = mediaOptions.hasVideo() ? mediaOptions.getTypeOfVideo() : "MICRO";
-		if (streamId == null) {
-			streamId = IdentifierPrefixes.STREAM_ID + type.substring(0, Math.min(type.length(), 3)) + "_"
-					+ RandomStringUtils.randomAlphabetic(1).toUpperCase() + RandomStringUtils.randomAlphanumeric(3)
-					+ "_" + this.getParticipantPublicId();
-		}
 		publisher.setStreamId(streamId);
 		publisher.setEndpointName(streamId);
 		publisher.setMediaOptions(mediaOptions);
@@ -178,15 +171,15 @@ public class KurentoParticipant extends Participant {
 		return session;
 	}
 
-	public String publishToRoom(SdpType sdpType, String sdpString, boolean doLoopback, boolean silent) {
-		log.info("PARTICIPANT {}: Request to publish video in room {} (sdp type {})", this.getParticipantPublicId(),
-				this.session.getSessionId(), sdpType);
-		log.trace("PARTICIPANT {}: Publishing Sdp ({}) is {}", this.getParticipantPublicId(), sdpType, sdpString);
+	public String publishToRoom(String sdpOffer, boolean doLoopback, boolean silent) {
+		log.info("PARTICIPANT {}: Request to publish video in room {})", this.getParticipantPublicId(),
+				this.session.getSessionId());
+		log.trace("PARTICIPANT {}: Publishing SDPOffer is {}", this.getParticipantPublicId(), sdpOffer);
 
-		String sdpResponse = this.getPublisher().publish(sdpType, sdpString, doLoopback);
+		String sdpResponse = this.getPublisher().publish(sdpOffer, doLoopback);
 		this.streaming = true;
 
-		log.trace("PARTICIPANT {}: Publishing Sdp ({}) is {}", this.getParticipantPublicId(), sdpType, sdpResponse);
+		log.trace("PARTICIPANT {}: Publishing Sdp is {}", this.getParticipantPublicId(), sdpResponse);
 		log.info("PARTICIPANT {}: Is now publishing video in room {}", this.getParticipantPublicId(),
 				this.session.getSessionId());
 
@@ -196,8 +189,8 @@ public class KurentoParticipant extends Participant {
 		}
 
 		if (!silent) {
-			endpointConfig.getCdr().recordNewPublisher(this, session.getSessionId(), publisher.getStreamId(),
-					publisher.getMediaOptions(), publisher.createdAt());
+			endpointConfig.getCdr().recordNewPublisher(this, publisher.getStreamId(), publisher.getMediaOptions(),
+					publisher.createdAt());
 		}
 
 		return sdpResponse;
@@ -261,8 +254,7 @@ public class KurentoParticipant extends Participant {
 								"Unable to create subscriber endpoint");
 					}
 
-					String subscriberEndpointName = this.getParticipantPublicId() + "_"
-							+ kSender.getPublisherStreamId();
+					String subscriberEndpointName = calculateSubscriberEndpointName(kSender);
 
 					subscriber.setEndpointName(subscriberEndpointName);
 					subscriber.getEndpoint().setName(subscriberEndpointName);
@@ -285,8 +277,8 @@ public class KurentoParticipant extends Participant {
 
 					if (!silent
 							&& !ProtocolElements.RECORDER_PARTICIPANT_PUBLICID.equals(this.getParticipantPublicId())) {
-						endpointConfig.getCdr().recordNewSubscriber(this, this.session.getSessionId(),
-								sender.getPublisherStreamId(), sender.getParticipantPublicId(), subscriber.createdAt());
+						endpointConfig.getCdr().recordNewSubscriber(this, sender.getPublisherStreamId(),
+								sender.getParticipantPublicId(), subscriber.createdAt());
 					}
 
 					return sdpAnswer;
@@ -432,6 +424,17 @@ public class KurentoParticipant extends Participant {
 		String desc = event.getType() + ": " + event.getDescription() + "(errCode=" + event.getErrorCode() + ")";
 		log.warn("PARTICIPANT {}: Media error encountered: {}", getParticipantPublicId(), desc);
 		session.sendMediaError(this.getParticipantPrivateId(), desc);
+	}
+
+	public String generateStreamId(MediaOptions mediaOptions) {
+		String type = mediaOptions.hasVideo() ? mediaOptions.getTypeOfVideo() : "MICRO";
+		return IdentifierPrefixes.STREAM_ID + type.substring(0, Math.min(type.length(), 3)) + "_"
+				+ RandomStringUtils.randomAlphabetic(1).toUpperCase() + RandomStringUtils.randomAlphanumeric(3) + "_"
+				+ this.getParticipantPublicId();
+	}
+
+	public String calculateSubscriberEndpointName(Participant senderParticipant) {
+		return this.getParticipantPublicId() + "_" + senderParticipant.getPublisherStreamId();
 	}
 
 	private void releasePublisherEndpoint(EndReason reason, Long kmsDisconnectionTime) {

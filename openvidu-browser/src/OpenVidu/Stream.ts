@@ -343,7 +343,7 @@ export class Stream extends EventDispatcher {
      *
      * @returns A Promise (to which you can optionally subscribe to) that is resolved if the previously applied filter has been successfully removed and rejected with an Error object in other case
      */
-    removeFilter(): Promise<any> {
+    removeFilter(): Promise<void> {
         return new Promise((resolve, reject) => {
             logger.info('Removing filter of stream ' + this.streamId);
             this.session.openvidu.sendRequest(
@@ -428,7 +428,7 @@ export class Stream extends EventDispatcher {
     /**
      * @hidden
      */
-    subscribe(): Promise<any> {
+    subscribe(): Promise<void> {
         return new Promise((resolve, reject) => {
             this.initWebRtcPeerReceive(false)
                 .then(() => {
@@ -443,7 +443,7 @@ export class Stream extends EventDispatcher {
     /**
      * @hidden
      */
-    publish(): Promise<any> {
+    publish(): Promise<void> {
         return new Promise((resolve, reject) => {
             if (this.isLocalStreamReadyToPublish) {
                 this.initWebRtcPeerSend(false)
@@ -780,7 +780,7 @@ export class Stream extends EventDispatcher {
             return false;
         }
         if (this.isLocal() && !!this.session.openvidu.advancedConfiguration.forceMediaReconnectionAfterNetworkDrop) {
-            logger.warn('OpenVidu Browser advanced configuration option "forceMediaReconnectionAfterNetworkDrop" is enabled. Publisher stream ' + this.streamId + 'will force a reconnection');
+            logger.warn('OpenVidu Browser advanced configuration option "forceMediaReconnectionAfterNetworkDrop" is enabled. Stream ' + this.streamId + ' will force a reconnection');
             return true;
         }
         const iceConnectionState: RTCIceConnectionState = this.getRTCPeerConnection().iceConnectionState;
@@ -805,7 +805,7 @@ export class Stream extends EventDispatcher {
     /**
      * @hidden
      */
-    initWebRtcPeerSend(reconnect: boolean): Promise<any> {
+    initWebRtcPeerSend(reconnect: boolean): Promise<void> {
         return new Promise((resolve, reject) => {
 
             if (!reconnect) {
@@ -908,7 +908,7 @@ export class Stream extends EventDispatcher {
     /**
      * @hidden
      */
-    initWebRtcPeerReceive(reconnect: boolean): Promise<any> {
+    initWebRtcPeerReceive(reconnect: boolean): Promise<void> {
         return new Promise((resolve, reject) => {
 
             const offerConstraints = {
