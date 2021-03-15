@@ -289,7 +289,7 @@ export class Session extends EventDispatcher {
 
         logger.info('Subscribing to ' + stream.connection.connectionId);
 
-        stream.subscribe()
+        stream.subscribe(properties)
             .then(() => {
                 logger.info('Subscribed correctly to ' + stream.connection.connectionId);
                 if (completionHandler !== undefined) {
@@ -369,6 +369,65 @@ export class Session extends EventDispatcher {
         subscriber.stream.streamManager.removeAllVideos();
     }
 
+
+    /**
+     * Resubscribe to `subscriber` with new constraints, replacing the video element.
+     *
+     * #### Events dispatched
+     *
+     * The [[Subscriber]] object will dispatch a `videoElementDestroyed` event for each video associated to it that was removed from DOM.
+     * Only videos [created by OpenVidu Browser](/en/stable/cheatsheet/manage-videos/#let-openvidu-take-care-of-the-video-players)) will be automatically removed
+     *
+     * See [[VideoElementEvent]] to learn more
+     */
+    resubscribe(subscriber: Subscriber, properties: SubscriberProperties, callback?: ((error: Error | undefined) => void)): Subscriber {
+      properties.insertMode = 'REPLACE';
+
+      const connectionId = subscriber.stream.connection.connectionId;
+
+      logger.info('Unsubscribing from ' + connectionId);
+
+      this.openvidu.sendRequest(
+          'unsubscribeFromVideo',
+          { sender: subscriber.stream.connection.connectionId },
+          (error, response) => {
+              if (error) {
+                  logger.error('Error unsubscribing from ' + connectionId, error);
+                  // return false;
+              } else {
+                  logger.info('Unsubscribed correctly from ' + connectionId);
+                  logger.info('Resubscribing to ' + connectionId);
+
+                  // resubscribe with the new properties
+                  if (!!callback && (typeof callback === 'function')) {
+                    subscriber = this.subscribe(subscriber.stream, subscriber.id, properties, callback);
+                  } else {
+                    subscriber = this.subscribe(subscriber.stream, subscriber.id, properties);
+                  }
+              }
+          }
+      );
+
+      return subscriber;
+    }
+
+    /**
+     * Promisified version of [[Session.resubscribe]]
+     */
+    resubscribeAsync(subscriber: Subscriber, properties: SubscriberProperties): Promise<Subscriber> {
+      return new Promise<Subscriber>((resolve, reject) => {
+
+          const callback = (error: Error) => {
+              if (!!error) {
+                  reject(error);
+              } else {
+                  resolve(subscriber);
+              }
+          };
+          this.resubscribe(subscriber, properties, callback);
+
+      });
+  }
 
     /**
      * Publishes to the Session the Publisher object

@@ -32,11 +32,13 @@ import { StreamPropertyChangedEvent } from '../OpenViduInternal/Events/StreamPro
 import { OpenViduError, OpenViduErrorName } from '../OpenViduInternal/Enums/OpenViduError';
 import { OpenViduLogger } from '../OpenViduInternal/Logger/OpenViduLogger';
 import { PlatformUtils } from '../OpenViduInternal/Utils/Platform';
+import { SubscriberProperties } from '../OpenViduInternal/Interfaces/Public/SubscriberProperties';
 
 /**
  * @hidden
  */
 import hark = require('hark');
+
 /**
  * @hidden
  */
@@ -428,9 +430,9 @@ export class Stream extends EventDispatcher {
     /**
      * @hidden
      */
-    subscribe(): Promise<void> {
+    subscribe(properties: SubscriberProperties): Promise<void> {
         return new Promise((resolve, reject) => {
-            this.initWebRtcPeerReceive(false)
+            this.initWebRtcPeerReceive(false, properties)
                 .then(() => {
                     resolve();
                 })
@@ -908,12 +910,12 @@ export class Stream extends EventDispatcher {
     /**
      * @hidden
      */
-    initWebRtcPeerReceive(reconnect: boolean): Promise<void> {
+    initWebRtcPeerReceive(reconnect: boolean, properties?: SubscriberProperties): Promise<void> {
         return new Promise((resolve, reject) => {
 
             const offerConstraints = {
-                audio: this.inboundStreamOpts.hasAudio,
-                video: this.inboundStreamOpts.hasVideo
+                audio: (!!properties && typeof properties.subscribeToAudio !== 'undefined') ? !!properties.subscribeToAudio : this.inboundStreamOpts.hasAudio,
+                video: (!!properties && typeof properties.subscribeToAudio !== 'undefined') ? !!properties.subscribeToVideo : this.inboundStreamOpts.hasVideo
             };
             logger.debug("'Session.subscribe(Stream)' called. Constraints of generate SDP offer",
                 offerConstraints);
