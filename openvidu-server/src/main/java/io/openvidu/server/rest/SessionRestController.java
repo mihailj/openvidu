@@ -822,7 +822,7 @@ public class SessionRestController {
 		data = data != null ? data : "";
 
 		// Build COMMON options
-		builder.type(type).data(data).record(true);
+		builder.type(type).data(data).record((Boolean) params.get("record"));
 
 		OpenViduRole role = null;
 		KurentoOptions kurentoOptions = null;
@@ -886,7 +886,6 @@ public class SessionRestController {
 
 			// Build WEBRTC options
 			builder.role(role).kurentoOptions(kurentoOptions);
-
 		} else if (ConnectionType.IPCAM.equals(type)) {
 			String rtspUri;
 			Boolean adaptativeBitrate;
@@ -926,6 +925,7 @@ public class SessionRestController {
 		Long shmSizeFinal = null;
 		String customLayoutFinal = null;
 		Boolean ignoreFailedStreamsFinal = null;
+		String streamIdFinal = null;
 
 		RecordingProperties defaultProps = session.getSessionProperties().defaultRecordingProperties();
 
@@ -953,6 +953,7 @@ public class SessionRestController {
 		Long shmSizeParam = null;
 		String customLayoutParam;
 		Boolean ignoreFailedStreamsParam;
+		String streamIdParam;
 
 		try {
 			sessionIdParam = (String) params.get("session");
@@ -968,6 +969,7 @@ public class SessionRestController {
 			}
 			customLayoutParam = (String) params.get("customLayout");
 			ignoreFailedStreamsParam = (Boolean) params.get("ignoreFailedStreams");
+			streamIdParam = (String) params.get("streamId");
 		} catch (ClassCastException | NumberFormatException e) {
 			throw new Exception("Type error in some parameter: " + e.getMessage());
 		}
@@ -1098,6 +1100,17 @@ public class SessionRestController {
 			} else {
 				ignoreFailedStreamsFinal = RecordingProperties.DefaultValues.ignoreFailedStreams;
 			}
+		} else if (OutputMode.INDIVIDUAL_SINGLE.equals(outputModeFinal)) {
+			if (ignoreFailedStreamsParam != null) {
+				ignoreFailedStreamsFinal = ignoreFailedStreamsParam;
+			} else if (ignoreFailedStreamsDefault != null) {
+				ignoreFailedStreamsFinal = ignoreFailedStreamsDefault;
+			} else {
+				ignoreFailedStreamsFinal = RecordingProperties.DefaultValues.ignoreFailedStreams;
+			}
+			if (streamIdParam != null && !streamIdParam.isEmpty()) {
+				streamIdFinal = streamIdParam;
+			}
 		}
 
 		RecordingProperties.Builder builder = new RecordingProperties.Builder();
@@ -1111,8 +1124,11 @@ public class SessionRestController {
 				builder.customLayout(customLayoutFinal);
 			}
 		}
-		if (OutputMode.INDIVIDUAL.equals(outputModeFinal)) {
+		if (OutputMode.INDIVIDUAL.equals(outputModeFinal) || OutputMode.INDIVIDUAL_SINGLE.equals(outputModeFinal)) {
 			builder.ignoreFailedStreams(ignoreFailedStreamsFinal);
+		}
+		if (OutputMode.INDIVIDUAL_SINGLE.equals(outputModeFinal)) {
+			builder.streamId(streamIdFinal);
 		}
 		return builder;
 	}

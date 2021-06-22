@@ -295,6 +295,7 @@ public class RecordingManager {
 										properties);
 								break;
 							case INDIVIDUAL:
+							case INDIVIDUAL_SINGLE:
 								recording = this.singleStreamRecordingService.startRecording(session, recordingId,
 										properties);
 								break;
@@ -377,6 +378,7 @@ public class RecordingManager {
 			recording = this.composedQuickStartRecordingService.stopRecording(session, recording, reason);
 			break;
 		case INDIVIDUAL:
+		case INDIVIDUAL_SINGLE:
 			recording = this.singleStreamRecordingService.stopRecording(session, recording, reason);
 			break;
 		}
@@ -408,6 +410,7 @@ public class RecordingManager {
 			}
 			break;
 		case INDIVIDUAL:
+		case INDIVIDUAL_SINGLE:
 			recording = this.singleStreamRecordingService.stopRecording(session, recording, reason,
 					kmsDisconnectionTime);
 			break;
@@ -426,7 +429,7 @@ public class RecordingManager {
 				return;
 			}
 		}
-		if (OutputMode.INDIVIDUAL.equals(recording.getOutputMode())) {
+		if (OutputMode.INDIVIDUAL.equals(recording.getOutputMode()) || OutputMode.INDIVIDUAL_SINGLE.equals(recording.getOutputMode())) {
 			// Start new RecorderEndpoint for this stream
 			log.info("Starting new RecorderEndpoint in session {} for new stream of participant {}",
 					session.getSessionId(), participant.getParticipantPublicId());
@@ -464,7 +467,7 @@ public class RecordingManager {
 				log.warn("Recording {} is still in \"starting\" status", recording.getId());
 			}
 		}
-		if (OutputMode.INDIVIDUAL.equals(recording.getOutputMode())) {
+		if (OutputMode.INDIVIDUAL.equals(recording.getOutputMode()) || OutputMode.INDIVIDUAL_SINGLE.equals(recording.getOutputMode())) {
 			// Stop specific RecorderEndpoint for this stream
 			log.info("Stopping RecorderEndpoint in session {} for stream of participant {}", session.getSessionId(),
 					streamId);

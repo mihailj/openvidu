@@ -52,6 +52,8 @@ public class RecordingProperties {
 	private String customLayout;
 	// For INDIVIDUAL
 	private Boolean ignoreFailedStreams;
+	// For INDIVIDUAL_SINGLE
+	private String streamId = "";
 	// For OpenVidu Pro
 	private String mediaNode;
 
@@ -70,6 +72,7 @@ public class RecordingProperties {
 		private Long shmSize;
 		private String customLayout;
 		private Boolean ignoreFailedStreams = DefaultValues.ignoreFailedStreams;
+		private String streamId = "";
 		private String mediaNode;
 
 		public Builder() {
@@ -86,6 +89,7 @@ public class RecordingProperties {
 			this.shmSize = props.shmSize();
 			this.customLayout = props.customLayout();
 			this.ignoreFailedStreams = props.ignoreFailedStreams();
+			this.streamId = props.streamId();
 			this.mediaNode = props.mediaNode();
 		}
 
@@ -95,7 +99,7 @@ public class RecordingProperties {
 		public RecordingProperties build() {
 			return new RecordingProperties(this.name, this.hasAudio, this.hasVideo, this.outputMode,
 					this.recordingLayout, this.resolution, this.frameRate, this.shmSize, this.customLayout,
-					this.ignoreFailedStreams, this.mediaNode);
+					this.ignoreFailedStreams, this.streamId, this.mediaNode);
 		}
 
 		/**
@@ -234,6 +238,14 @@ public class RecordingProperties {
 		}
 
 		/**
+		 * Call this method to set the stream id for individual recording
+		 */
+		public RecordingProperties.Builder streamId(String streamId) {
+			this.streamId = streamId;
+			return this;
+		}
+
+		/**
 		 * <a href="https://docs.openvidu.io/en/stable/openvidu-pro/" target="_blank"
 		 * style="display: inline-block; background-color: rgb(0, 136, 170); color:
 		 * white; font-weight: bold; padding: 0px 5px; margin-right: 5px; border-radius:
@@ -256,7 +268,7 @@ public class RecordingProperties {
 
 	protected RecordingProperties(String name, Boolean hasAudio, Boolean hasVideo, Recording.OutputMode outputMode,
 			RecordingLayout layout, String resolution, Integer frameRate, Long shmSize, String customLayout,
-			Boolean ignoreFailedStreams, String mediaNode) {
+			Boolean ignoreFailedStreams, String streamId, String mediaNode) {
 		this.name = name != null ? name : "";
 		this.hasAudio = hasAudio != null ? hasAudio : DefaultValues.hasAudio;
 		this.hasVideo = hasVideo != null ? hasVideo : DefaultValues.hasVideo;
@@ -271,9 +283,10 @@ public class RecordingProperties {
 				this.customLayout = customLayout;
 			}
 		}
-		if (OutputMode.INDIVIDUAL.equals(this.outputMode)) {
+		if (OutputMode.INDIVIDUAL.equals(this.outputMode) || OutputMode.INDIVIDUAL_SINGLE.equals(this.outputMode)) {
 			this.ignoreFailedStreams = ignoreFailedStreams;
 		}
+		this.streamId = streamId != null ? streamId : "";
 		this.mediaNode = mediaNode;
 	}
 
@@ -423,6 +436,13 @@ public class RecordingProperties {
 	}
 
 	/**
+	 * Defines the stream id you want to record in INDIVIDUAL recording
+	 */
+	public String streamId() {
+		return this.streamId;
+	}
+
+	/**
 	 * <a href="https://docs.openvidu.io/en/stable/openvidu-pro/" target="_blank"
 	 * style="display: inline-block; background-color: rgb(0, 136, 170); color:
 	 * white; font-weight: bold; padding: 0px 5px; margin-right: 5px; border-radius:
@@ -457,13 +477,14 @@ public class RecordingProperties {
 				json.addProperty("customLayout", customLayout != null ? customLayout : "");
 			}
 		}
-		if (OutputMode.INDIVIDUAL.equals(outputMode)) {
+		if (OutputMode.INDIVIDUAL.equals(outputMode) || OutputMode.INDIVIDUAL_SINGLE.equals(outputMode)) {
 			json.addProperty("ignoreFailedStreams",
 					ignoreFailedStreams != null ? ignoreFailedStreams : DefaultValues.ignoreFailedStreams);
 		}
 		if (this.mediaNode != null) {
 			json.addProperty("mediaNode", mediaNode);
 		}
+		json.addProperty("streamId", streamId);
 		return json;
 	}
 
@@ -512,8 +533,11 @@ public class RecordingProperties {
 				}
 			}
 		}
-		if (json.has("ignoreFailedStreams") && OutputMode.INDIVIDUAL.equals(outputModeAux)) {
+		if (json.has("ignoreFailedStreams") && (OutputMode.INDIVIDUAL.equals(outputModeAux) || OutputMode.INDIVIDUAL_SINGLE.equals(outputModeAux))) {
 			builder.ignoreFailedStreams(json.get("ignoreFailedStreams").getAsBoolean());
+		}
+		if (json.has("streamId")) {
+			builder.streamId(json.get("streamId").getAsString());
 		}
 		if (json.has("mediaNode")) {
 			String mediaNodeId = null;

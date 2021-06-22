@@ -32,8 +32,8 @@ public abstract class RecordingManagerUtils {
 	protected abstract Set<String> getAllRecordingIdsFromStorage(String sessionIdPrefix);
 
 	protected String getExtensionFromRecording(Recording recording) {
-		if (OutputMode.INDIVIDUAL.equals(recording.getOutputMode())) {
-			return "zip";
+		if (OutputMode.INDIVIDUAL.equals(recording.getOutputMode()) || OutputMode.INDIVIDUAL_SINGLE.equals(recording.getOutputMode())) {
+			return "json";
 		} else if (recording.hasVideo()) {
 			return "mp4";
 		} else {

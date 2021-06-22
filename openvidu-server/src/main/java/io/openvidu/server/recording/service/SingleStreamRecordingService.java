@@ -55,6 +55,7 @@ import com.google.gson.JsonParser;
 import io.openvidu.client.OpenViduException;
 import io.openvidu.client.OpenViduException.Code;
 import io.openvidu.java.client.RecordingProperties;
+import io.openvidu.java.client.Recording.OutputMode;
 import io.openvidu.server.cdr.CallDetailRecord;
 import io.openvidu.server.config.OpenviduConfig;
 import io.openvidu.server.core.EndReason;
@@ -69,7 +70,6 @@ import io.openvidu.server.recording.RecordingDownloader;
 import io.openvidu.server.recording.RecordingUploader;
 import io.openvidu.server.utils.CustomFileManager;
 import io.openvidu.server.utils.RemoteOperationUtils;
-
 public class SingleStreamRecordingService extends RecordingService {
 
 	private static final Logger log = LoggerFactory.getLogger(SingleStreamRecordingService.class);
@@ -100,11 +100,19 @@ public class SingleStreamRecordingService extends RecordingService {
 		activeRecorders.put(recording.getId(), new ConcurrentHashMap<>());
 		storedRecorders.put(recording.getId(), new ConcurrentHashMap<>());
 
-		int activePublishersToRecord = session.getActiveIndividualRecordedPublishers();
+		int activePublishersToRecord = 0;
+
+		if (OutputMode.INDIVIDUAL.equals(properties.outputMode())) {
+			activePublishersToRecord = session.getActiveIndividualRecordedPublishers();
+		} else if (OutputMode.INDIVIDUAL_SINGLE.equals(properties.outputMode())) {
+			activePublishersToRecord = 1;
+		}
+
 		final CountDownLatch recordingStartedCountdown = new CountDownLatch(activePublishersToRecord);
 
 		for (Participant p : session.getParticipants()) {
-			if (p.isStreaming() && p.getToken().record()) {
+			if ((OutputMode.INDIVIDUAL_SINGLE.equals(properties.outputMode()) && p.isStreaming() && (properties.streamId() != null) && !properties.streamId().isEmpty() && p.getPublisherStreamId().equals(properties.streamId())) || 
+					(OutputMode.INDIVIDUAL.equals(properties.outputMode()) && p.isStreaming() && p.getToken().record())) {
 
 				MediaProfileSpecType profile = null;
 				try {
@@ -116,6 +124,7 @@ public class SingleStreamRecordingService extends RecordingService {
 					recordingStartedCountdown.countDown();
 					continue;
 				}
+
 				this.startRecorderEndpointForPublisherEndpoint(recording.getId(), profile, p,
 						recordingStartedCountdown);
 			}
@@ -499,8 +508,8 @@ public class SingleStreamRecordingService extends RecordingService {
 
 		json.add("files", jsonArrayFiles);
 		this.fileManager.createAndWriteFile(syncFilePath, new GsonBuilder().setPrettyPrinting().create().toJson(json));
-		this.generateZipFileAndCleanFolder(folderPath,
-				recording.getName() + RecordingService.INDIVIDUAL_RECORDING_COMPRESSED_EXTENSION);
+		/*this.generateZipFileAndCleanFolder(folderPath,
+				recording.getName() + RecordingService.INDIVIDUAL_RECORDING_COMPRESSED_EXTENSION);*/
 
 		double duration = (double) (maxEndTime - minStartTime) / 1000;
 		duration = duration > 0 ? duration : 0;

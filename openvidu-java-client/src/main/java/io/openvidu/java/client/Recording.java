@@ -76,6 +76,11 @@ public class Recording {
 		INDIVIDUAL,
 
 		/**
+		 * Record a single stream
+		 */
+		INDIVIDUAL_SINGLE,
+
+		/**
 		 * Works the same way as COMPOSED mode, but the necessary recorder service
 		 * module will start some time in advance and won't be terminated once a
 		 * specific session recording has ended. This module will remain up and running

@@ -169,7 +169,7 @@ public abstract class RecordingService {
 				}
 				builder.shmSize(properties.shmSize());
 			}
-			if (OutputMode.INDIVIDUAL.equals(properties.outputMode())) {
+			if (OutputMode.INDIVIDUAL.equals(properties.outputMode()) || OutputMode.INDIVIDUAL_SINGLE.equals(properties.outputMode())) {
 				builder.ignoreFailedStreams(properties.ignoreFailedStreams());
 			}
 			properties = builder.build();
