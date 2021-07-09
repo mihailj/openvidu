@@ -821,8 +821,13 @@ public class SessionRestController {
 		}
 		data = data != null ? data : "";
 
+		Boolean record = false;
+		if (params.get("record") != null) {
+			record = (Boolean) params.get("record");
+		}
+
 		// Build COMMON options
-		builder.type(type).data(data).record((Boolean) params.get("record"));
+		builder.type(type).data(data).record(record);
 
 		OpenViduRole role = null;
 		KurentoOptions kurentoOptions = null;
